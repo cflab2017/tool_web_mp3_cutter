@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>오디오 자르기 — 브라우저에서 무손실 WAV로 | CODINGNOW</title>
+<meta name="description" content="오디오 파일에서 원하는 구간만 잘라 WAV로 저장하는 무료 웹 도구. 업로드 없이 100% 브라우저에서 처리됩니다. MP3·WAV·M4A·OGG 지원." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="오디오 자르기 — 브라우저에서 무손실 WAV로" />
+<meta property="og:description" content="오디오 파일에서 원하는 구간만 잘라 WAV로 저장. 업로드 없이 브라우저에서 처리." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#0b0a08; --panel:#141210; --panel-2:#1c1916;
+  --amber:#ffb000; --amber-dim:#b8801f; --line:#2a251e;
+  --muted:#7a6f5c; --text:#f3e7cf;
+  --danger:#ff5f56; --ok:#7ec96b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"JetBrains Mono","Gowun Dodum",monospace;
+  min-height:100vh; line-height:1.5;
+  position:relative; overflow-x:hidden;
+}
+/* CRT scanlines */
+body::before{
+  content:""; position:fixed; inset:0; z-index:9999; pointer-events:none;
+  background:repeating-linear-gradient(to bottom, rgba(255,176,0,.03) 0 1px, transparent 1px 3px);
+  mix-blend-mode:screen;
+}
+/* CRT vignette */
+body::after{
+  content:""; position:fixed; inset:0; z-index:9998; pointer-events:none;
+  background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%);
+}
+a{color:var(--amber)}
+.wrap{max-width:1080px;margin:0 auto;padding:22px 18px 48px}
+
+/* Header */
+header{margin-bottom:22px}
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.brand{color:var(--amber-dim);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+.lang-toggle{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.lang-toggle button{
+  background:transparent;color:var(--muted);border:0;padding:6px 12px;
+  font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:.05em;
+}
+.lang-toggle button.active{background:var(--amber);color:#1a1407;font-weight:700}
+h1{font-size:30px;margin:10px 0 4px;font-weight:700;letter-spacing:-.01em}
+.cursor{display:inline-block;width:.6ch;background:var(--amber);
+  animation:blink 1.05s step-end infinite;margin-left:.12ch;color:transparent}
+@keyframes blink{50%{opacity:0}}
+.subtitle{color:var(--muted);font-size:14px;margin:0}
+
+/* Layout */
+.workspace{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber-dim);
+  margin:0 0 12px;font-weight:700}
+
+/* Dropzone */
+.dropzone{
+  border:1.5px dashed var(--line);border-radius:10px;padding:48px 20px;text-align:center;
+  cursor:pointer;transition:border-color .15s,background .15s;background:var(--panel-2)
+}
+.dropzone:hover,.dropzone.dragover{border-color:var(--amber);background:#221c12}
+.dropzone .ico{font-size:38px;line-height:1;color:var(--amber);margin-bottom:10px}
+.dropzone .dt{font-size:15px;font-weight:500}
+.dropzone .dh{color:var(--muted);font-size:13px;margin-top:4px}
+.dropzone .df{color:var(--amber-dim);font-size:12px;margin-top:8px}
+.dropnote{color:var(--muted);font-size:11.5px;margin-top:12px;text-align:center}
+
+/* Waveform */
+.wave-wrap{position:relative;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:8px;overflow:hidden}
+canvas#wave{display:block;width:100%;height:170px;cursor:crosshair;touch-action:none}
+.playbar{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.timecode{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;margin-left:auto}
+.timecode b{color:var(--text);font-weight:500}
+
+/* Buttons */
+button.btn{
+  font-family:inherit;background:var(--panel-2);color:var(--text);
+  border:1px solid var(--line);border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s
+}
+button.btn:hover{border-color:var(--amber);color:var(--amber)}
+button.btn.primary{background:var(--amber);color:#1a1407;border-color:var(--amber);font-weight:700}
+button.btn.primary:hover{background:#ffc233;color:#1a1407}
+button.btn:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--muted)}
+button.btn.small{padding:5px 9px;font-size:11.5px}
+
+/* Sidebar */
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:4px 0;border-bottom:1px dotted var(--line)}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted)}
+.kv .v{color:var(--text);text-align:right;word-break:break-all;font-variant-numeric:tabular-nums}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+.field .row{display:flex;gap:6px}
+.field input{
+  flex:1;min-width:0;font-family:inherit;background:var(--bg);color:var(--text);
+  border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-size:13px;
+  font-variant-numeric:tabular-nums
+}
+.field input:focus{outline:none;border-color:var(--amber)}
+.sellen{font-size:13px;color:var(--amber);font-variant-numeric:tabular-nums;margin:2px 0 14px}
+.divider{height:1px;background:var(--line);margin:16px 0}
+.status{font-size:12.5px;min-height:1.2em;margin-top:12px;color:var(--muted)}
+.status.err{color:var(--danger)}
+.status.ok{color:var(--ok)}
+.hidden{display:none !important}
+
+/* Footer */
+footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  color:var(--muted);font-size:12.5px}
+footer a{text-decoration:none}
+footer a:hover{text-decoration:underline}
+
+@media (max-width:820px){
+  .workspace{grid-template-columns:1fr}
+  h1{font-size:25px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="topbar">
+      <div class="brand" data-i18n="brand">CODINGNOW · 오디오 도구</div>
+      <div class="lang-toggle" id="langToggle">
+        <button data-lang="ko">KR</button><button data-lang="en">EN</button>
+      </div>
+    </div>
+    <h1><span data-i18n="title">오디오 자르기</span><span class="cursor">█</span></h1>
+    <p class="subtitle" data-i18n="subtitle">원하는 구간만 잘라 WAV로 — 업로드 없이 브라우저에서</p>
+  </header>
+
+  <main class="workspace">
+    <!-- LEFT -->
+    <section class="panel">
+      <!-- Dropzone (no file) -->
+      <div id="dropzone" class="dropzone">
+        <div class="ico">♪</div>
+        <div class="dt" data-i18n="dropTitle">오디오 파일을 끌어다 놓기</div>
+        <div class="dh" data-i18n="dropHint">또는 클릭해서 선택</div>
+        <div class="df" data-i18n="dropFormats">MP3 · WAV · M4A · OGG · FLAC 등</div>
+        <input type="file" id="fileInput" accept="audio/*" class="hidden" />
+      </div>
+      <p class="dropnote" id="dropnote" data-i18n="dropNote">파일은 서버로 전송되지 않습니다. 모든 처리는 브라우저 안에서.</p>
+
+      <!-- Editor (after file) -->
+      <div id="editor" class="hidden">
+        <div class="wave-wrap"><canvas id="wave"></canvas></div>
+        <div class="playbar">
+          <button class="btn" id="playBtn"><span data-i18n="btnPlay">재생</span></button>
+          <button class="btn" id="playSelBtn" data-i18n="btnPlaySel">구간 재생</button>
+          <span class="timecode"><b id="tcCur">0:00.000</b> / <span id="tcDur">0:00.000</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT -->
+    <aside class="panel" id="sidebar">
+      <h2 data-i18n="secFile">파일 정보</h2>
+      <div class="kv"><span class="k" data-i18n="lblName">파일명</span><span class="v" id="infoName">—</span></div>
+      <div class="kv"><span class="k" data-i18n="lblDuration">길이</span><span class="v" id="infoDur">—</span></div>
+      <div class="kv"><span class="k" data-i18n="lblRate">샘플레이트</span><span class="v" id="infoRate">—</span></div>
+      <div class="kv"><span class="k" data-i18n="lblChannels">채널</span><span class="v" id="infoCh">—</span></div>
+
+      <div class="divider"></div>
+
+      <h2 data-i18n="secSelection">선택 구간</h2>
+      <div class="field">
+        <label data-i18n="lblStart">시작</label>
+        <div class="row">
+          <input type="text" id="startInput" value="0:00.000" inputmode="decimal" />
+          <button class="btn small" id="setStartBtn" data-i18n="btnToPlayhead">재생위치</button>
+        </div>
+      </div>
+      <div class="field">
+        <label data-i18n="lblEnd">끝</label>
+        <div class="row">
+          <input type="text" id="endInput" value="0:00.000" inputmode="decimal" />
+          <button class="btn small" id="setEndBtn" data-i18n="btnToPlayhead">재생위치</button>
+        </div>
+      </div>
+      <div class="sellen"><span data-i18n="lblSelLen">선택 길이</span>: <span id="selLen">0:00.000</span></div>
+      <button class="btn small" id="selectAllBtn" data-i18n="btnSelectAll">전체 선택</button>
+
+      <div class="divider"></div>
+
+      <h2 data-i18n="secOutput">출력</h2>
+      <div class="kv"><span class="k" data-i18n="lblFormat">형식</span><span class="v" data-i18n="valFormat">WAV · 16-bit PCM</span></div>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn primary" id="cutBtn" data-i18n="btnCut">자르고 다운로드</button>
+        <button class="btn small" id="newFileBtn" data-i18n="btnNewFile">다른 파일</button>
+      </div>
+      <div class="status" id="status"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <span data-i18n="footerText">업로드 없이 브라우저에서 동작하는 오디오 자르기 도구.</span>
+    <a id="donate" href="https://paypal.me/codingnow" target="_blank" rel="noopener" data-i18n="donate">☕ 후원하기</a>
+  </footer>
+</div>
+
+<audio id="player" class="hidden"></audio>
+
+<script>
+"use strict";
+
+/* ---------- constants ---------- */
+const DONATE_URL = "https://paypal.me/codingnow";
+
+const I18N = {
+  ko: {
+    docTitle: "오디오 자르기 — 브라우저에서 무손실 WAV로 | CODINGNOW",
+    brand: "CODINGNOW · 오디오 도구",
+    title: "오디오 자르기",
+    subtitle: "원하는 구간만 잘라 WAV로 — 업로드 없이 브라우저에서",
+    dropTitle: "오디오 파일을 끌어다 놓기",
+    dropHint: "또는 클릭해서 선택",
+    dropFormats: "MP3 · WAV · M4A · OGG · FLAC 등",
+    dropNote: "파일은 서버로 전송되지 않습니다. 모든 처리는 브라우저 안에서.",
+    secFile: "파일 정보",
+    lblName: "파일명", lblDuration: "길이", lblRate: "샘플레이트", lblChannels: "채널",
+    secSelection: "선택 구간",
+    lblStart: "시작", lblEnd: "끝", lblSelLen: "선택 길이",
+    btnToPlayhead: "재생위치", btnSelectAll: "전체 선택",
+    secOutput: "출력", lblFormat: "형식", valFormat: "WAV · 16-bit PCM",
+    btnCut: "자르고 다운로드", btnNewFile: "다른 파일",
+    btnPlay: "재생", btnPause: "일시정지", btnPlaySel: "구간 재생",
+    footerText: "업로드 없이 브라우저에서 동작하는 오디오 자르기 도구.",
+    donate: "☕ 후원하기",
+    mono: "모노", stereo: "스테레오", chSuffix: "채널",
+    errType: "⚠ 오디오 파일이 아닙니다. 오디오 파일을 선택해 주세요.",
+    errDecode: "⚠ 이 파일을 디코드할 수 없습니다. 다른 오디오 파일을 시도해 주세요.",
+    errEmptySel: "⚠ 선택 구간이 비어 있습니다. 시작과 끝을 다르게 설정해 주세요.",
+    statDecoding: "디코딩 중…",
+    statReady: "준비됨 — 구간을 선택한 뒤 자르세요.",
+    statCutting: "자르는 중…",
+    statDone: "완료 — 다운로드가 시작됩니다."
+  },
+  en: {
+    docTitle: "Audio Cutter — lossless WAV, in your browser | CODINGNOW",
+    brand: "CODINGNOW · Audio Tools",
+    title: "Audio Cutter",
+    subtitle: "Trim a region and save as WAV — in your browser, no upload",
+    dropTitle: "Drop an audio file here",
+    dropHint: "or click to choose",
+    dropFormats: "MP3 · WAV · M4A · OGG · FLAC and more",
+    dropNote: "Files are never uploaded. Everything runs inside your browser.",
+    secFile: "File info",
+    lblName: "Name", lblDuration: "Duration", lblRate: "Sample rate", lblChannels: "Channels",
+    secSelection: "Selection",
+    lblStart: "Start", lblEnd: "End", lblSelLen: "Selection length",
+    btnToPlayhead: "Playhead", btnSelectAll: "Select all",
+    secOutput: "Output", lblFormat: "Format", valFormat: "WAV · 16-bit PCM",
+    btnCut: "Cut & download", btnNewFile: "New file",
+    btnPlay: "Play", btnPause: "Pause", btnPlaySel: "Play selection",
+    footerText: "An audio cutter that runs in your browser, no upload.",
+    donate: "☕ Support",
+    mono: "Mono", stereo: "Stereo", chSuffix: "ch",
+    errType: "⚠ Not an audio file. Please choose an audio file.",
+    errDecode: "⚠ Could not decode this file. Try a different audio file.",
+    errEmptySel: "⚠ The selection is empty. Set start and end to different points.",
+    statDecoding: "Decoding…",
+    statReady: "Ready — select a region, then cut.",
+    statCutting: "Cutting…",
+    statDone: "Done — your download is starting."
+  }
+};
+let currentLang = "ko";
+
+/* ---------- elements ---------- */
+const $ = (id) => document.getElementById(id);
+const langToggle = $("langToggle");
+const dropzone = $("dropzone");
+const dropnote = $("dropnote");
+const fileInput = $("fileInput");
+const editor = $("editor");
+const canvas = $("wave");
+const ctx = canvas.getContext("2d");
+const player = $("player");
+const playBtn = $("playBtn"), playSelBtn = $("playSelBtn");
+const tcCur = $("tcCur"), tcDur = $("tcDur");
+const infoName = $("infoName"), infoDur = $("infoDur"), infoRate = $("infoRate"), infoCh = $("infoCh");
+const startInput = $("startInput"), endInput = $("endInput"), selLen = $("selLen");
+const setStartBtn = $("setStartBtn"), setEndBtn = $("setEndBtn"), selectAllBtn = $("selectAllBtn");
+const cutBtn = $("cutBtn"), newFileBtn = $("newFileBtn"), statusEl = $("status");
+
+/* ---------- state ---------- */
+let audioCtx = null;
+let audioBuffer = null;
+let objectURL = null;
+let duration = 0;          // seconds (from decoded buffer)
+let selStart = 0, selEnd = 0;
+let fileBaseName = "audio";
+let peakCache = null;      // {width, mins, maxs}
+let rafId = 0;
+let playingSelection = false;
+
+/* ---------- helpers ---------- */
+function t() { return I18N[currentLang]; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = s - m * 60;
+  return m + ":" + sec.toFixed(3).padStart(6, "0");
+}
+function parseTime(str) {
+  str = String(str).trim();
+  if (str === "") return null;
+  const parts = str.split(":").map((p) => p.trim());
+  let sec;
+  if (parts.length === 1) sec = parseFloat(parts[0]);
+  else if (parts.length === 2) sec = parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+  else if (parts.length === 3) sec = parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+  else return null;
+  return isNaN(sec) ? null : sec;
+}
+function setStatus(msg, kind) {
+  statusEl.textContent = msg || "";
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+/* ---------- file loading ---------- */
+function pickFile() { fileInput.click(); }
+
+dropzone.addEventListener("click", pickFile);
+fileInput.addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadFile(f);
+});
+["dragenter", "dragover"].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("dragover"); })
+);
+["dragleave", "drop"].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("dragover"); })
+);
+dropzone.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+async function loadFile(file) {
+  if (file.type && file.type.indexOf("audio") !== 0 && !/\.(mp3|wav|m4a|aac|ogg|oga|flac|opus|weba|webm)$/i.test(file.name)) {
+    setStatus(t().errType, "err");
+    return;
+  }
+  setStatus(t().statDecoding, "");
+  try {
+    const buf = await file.arrayBuffer();
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await audioCtx.decodeAudioData(buf);
+    audioBuffer = decoded;
+    duration = decoded.duration;
+
+    if (objectURL) URL.revokeObjectURL(objectURL);
+    objectURL = URL.createObjectURL(file);
+    player.src = objectURL;
+
+    fileBaseName = file.name.replace(/\.[^.]+$/, "") || "audio";
+    selStart = 0;
+    selEnd = duration;
+    peakCache = null;
+
+    // file info
+    infoName.textContent = file.name;
+    infoDur.textContent = fmtTime(duration);
+    infoRate.textContent = decoded.sampleRate.toLocaleString() + " Hz";
+    infoCh.textContent = channelLabel(decoded.numberOfChannels);
+
+    dropzone.classList.add("hidden");
+    dropnote.classList.add("hidden");
+    editor.classList.remove("hidden");
+
+    tcDur.textContent = fmtTime(duration);
+    tcCur.textContent = fmtTime(0);
+    updateSelectionUI();
+    requestAnimationFrame(() => { resizeCanvas(); draw(); });
+    setStatus(t().statReady, "");
+  } catch (err) {
+    setStatus(t().errDecode, "err");
+  }
+}
+
+function channelLabel(n) {
+  if (n === 1) return "1 (" + t().mono + ")";
+  if (n === 2) return "2 (" + t().stereo + ")";
+  return n + " " + t().chSuffix;
+}
+
+function resetToDrop() {
+  if (objectURL) { URL.revokeObjectURL(objectURL); objectURL = null; }
+  stopPlayback();
+  player.removeAttribute("src");
+  audioBuffer = null; duration = 0; peakCache = null;
+  editor.classList.add("hidden");
+  dropzone.classList.remove("hidden");
+  dropnote.classList.remove("hidden");
+  fileInput.value = "";
+  setStatus("", "");
+}
+newFileBtn.addEventListener("click", resetToDrop);
+
+/* ---------- waveform ---------- */
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.round(cssW * dpr));
+  canvas.height = Math.max(1, Math.round(cssH * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  peakCache = null;
+}
+function computePeaks(w) {
+  const data = audioBuffer.getChannelData(0);
+  const n = data.length;
+  const mins = new Float32Array(w), maxs = new Float32Array(w);
+  const step = n / w;
+  for (let x = 0; x < w; x++) {
+    const s = Math.floor(x * step);
+    const e = Math.min(n, Math.floor((x + 1) * step));
+    let mn = 1, mx = -1;
+    for (let i = s; i < e; i++) { const v = data[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    if (s >= e) { mn = 0; mx = 0; }
+    mins[x] = mn; maxs[x] = mx;
+  }
+  peakCache = { width: w, mins: mins, maxs: maxs };
+}
+const xToTime = (x, w) => (x / w) * duration;
+const timeToX = (tt, w) => (tt / duration) * w;
+
+function draw() {
+  if (!audioBuffer) return;
+  const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  if (!peakCache || peakCache.width !== cssW) computePeaks(cssW);
+  const mid = cssH / 2, amp = cssH / 2 * 0.92;
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  // center line
+  ctx.strokeStyle = "#221d16"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, mid + 0.5); ctx.lineTo(cssW, mid + 0.5); ctx.stroke();
+
+  const xs = timeToX(selStart, cssW), xe = timeToX(selEnd, cssW);
+
+  // selection band background
+  ctx.fillStyle = "rgba(255,176,0,.10)";
+  ctx.fillRect(xs, 0, Math.max(0, xe - xs), cssH);
+
+  // waveform columns
+  for (let x = 0; x < cssW; x++) {
+    const y1 = mid + peakCache.maxs[x] * -amp;
+    const y2 = mid + peakCache.mins[x] * -amp;
+    ctx.fillStyle = (x >= xs && x <= xe) ? "#ffb000" : "#5a4a2a";
+    ctx.fillRect(x, Math.min(y1, y2), 1, Math.max(1, Math.abs(y2 - y1)));
+  }
+
+  // selection handles
+  drawHandle(xs, cssH);
+  drawHandle(xe, cssH);
+
+  // playhead
+  const ph = timeToX(player.currentTime || 0, cssW);
+  ctx.strokeStyle = "#f3e7cf"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ph + 0.5, 0); ctx.lineTo(ph + 0.5, cssH); ctx.stroke();
+}
+function drawHandle(x, h) {
+  ctx.strokeStyle = "#ffb000"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  ctx.fillStyle = "#ffb000";
+  ctx.fillRect(x - 3, 0, 6, 7);
+  ctx.fillRect(x - 3, h - 7, 6, 7);
+}
+
+/* ---------- selection interaction ---------- */
+let dragMode = null;   // 'start' | 'end' | 'new'
+let newAnchor = 0, downX = 0, dragMoved = false;
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!audioBuffer) return;
+  const rect = canvas.getBoundingClientRect();
+  const w = canvas.clientWidth;
+  const x = clamp(e.clientX - rect.left, 0, w);
+  downX = x; dragMoved = false;
+  const xs = timeToX(selStart, w), xe = timeToX(selEnd, w);
+  if (Math.abs(x - xs) <= 8) dragMode = "start";
+  else if (Math.abs(x - xe) <= 8) dragMode = "end";
+  else { dragMode = "new"; newAnchor = xToTime(x, w); }
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!dragMode) return;
+  const rect = canvas.getBoundingClientRect();
+  const w = canvas.clientWidth;
+  const x = clamp(e.clientX - rect.left, 0, w);
+  if (Math.abs(x - downX) > 3) dragMoved = true;
+  const tt = clamp(xToTime(x, w), 0, duration);
+  if (dragMode === "start") selStart = Math.min(tt, selEnd);
+  else if (dragMode === "end") selEnd = Math.max(tt, selStart);
+  else if (dragMode === "new" && dragMoved) {
+    selStart = Math.min(newAnchor, tt);
+    selEnd = Math.max(newAnchor, tt);
+  }
+  updateSelectionUI();
+  draw();
+});
+canvas.addEventListener("pointerup", (e) => {
+  if (!dragMode) return;
+  if (dragMode === "new" && !dragMoved) {
+    // simple click = seek
+    const w = canvas.clientWidth;
+    player.currentTime = clamp(xToTime(downX, w), 0, duration);
+    tcCur.textContent = fmtTime(player.currentTime);
+    draw();
+  }
+  dragMode = null;
+});
+
+function updateSelectionUI() {
+  selStart = clamp(selStart, 0, duration);
+  selEnd = clamp(selEnd, 0, duration);
+  if (selStart > selEnd) { const tmp = selStart; selStart = selEnd; selEnd = tmp; }
+  startInput.value = fmtTime(selStart);
+  endInput.value = fmtTime(selEnd);
+  selLen.textContent = fmtTime(selEnd - selStart);
+}
+
+startInput.addEventListener("change", () => {
+  const v = parseTime(startInput.value);
+  if (v == null) { updateSelectionUI(); return; }
+  selStart = clamp(v, 0, selEnd);
+  updateSelectionUI(); draw();
+});
+endInput.addEventListener("change", () => {
+  const v = parseTime(endInput.value);
+  if (v == null) { updateSelectionUI(); return; }
+  selEnd = clamp(v, selStart, duration);
+  updateSelectionUI(); draw();
+});
+setStartBtn.addEventListener("click", () => {
+  selStart = clamp(player.currentTime || 0, 0, selEnd);
+  updateSelectionUI(); draw();
+});
+setEndBtn.addEventListener("click", () => {
+  selEnd = clamp(player.currentTime || 0, selStart, duration);
+  updateSelectionUI(); draw();
+});
+selectAllBtn.addEventListener("click", () => {
+  selStart = 0; selEnd = duration;
+  updateSelectionUI(); draw();
+});
+
+/* ---------- playback ---------- */
+function loop() {
+  tcCur.textContent = fmtTime(player.currentTime);
+  if (playingSelection && player.currentTime >= selEnd) { player.pause(); }
+  draw();
+  if (!player.paused) rafId = requestAnimationFrame(loop);
+}
+function startLoop() { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(loop); }
+function stopPlayback() { if (!player.paused) player.pause(); playingSelection = false; }
+
+playBtn.addEventListener("click", () => {
+  if (!audioBuffer) return;
+  if (player.paused) {
+    playingSelection = false;
+    if (player.currentTime >= duration - 0.01) player.currentTime = 0;
+    player.play();
+  } else player.pause();
+});
+playSelBtn.addEventListener("click", () => {
+  if (!audioBuffer) return;
+  playingSelection = true;
+  player.currentTime = selStart;
+  player.play();
+});
+player.addEventListener("play", () => { playBtn.querySelector("span").textContent = t().btnPause; startLoop(); });
+player.addEventListener("pause", () => { playBtn.querySelector("span").textContent = t().btnPlay; cancelAnimationFrame(rafId); draw(); });
+player.addEventListener("ended", () => { playingSelection = false; tcCur.textContent = fmtTime(player.currentTime); });
+
+/* ---------- WAV export ---------- */
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+function encodeWAV(buffer, startSample, endSample) {
+  const numCh = buffer.numberOfChannels;
+  const len = endSample - startSample;
+  const sampleRate = buffer.sampleRate;
+  const blockAlign = numCh * 2;
+  const dataSize = len * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);          // PCM
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);         // bits per sample
+  writeString(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  const channels = [];
+  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+  let offset = 44;
+  for (let i = startSample; i < endSample; i++) {
+    for (let c = 0; c < numCh; c++) {
+      let s = channels[c][i];
+      s = s < -1 ? -1 : s > 1 ? 1 : s;
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+cutBtn.addEventListener("click", () => {
+  if (!audioBuffer) return;
+  updateSelectionUI();
+  const sr = audioBuffer.sampleRate;
+  let startSample = Math.floor(selStart * sr);
+  let endSample = Math.floor(selEnd * sr);
+  startSample = clamp(startSample, 0, audioBuffer.length);
+  endSample = clamp(endSample, 0, audioBuffer.length);
+  if (endSample <= startSample) { setStatus(t().errEmptySel, "err"); return; }
+
+  setStatus(t().statCutting, "");
+  // let the status paint before the (sync) encode
+  setTimeout(() => {
+    const blob = encodeWAV(audioBuffer, startSample, endSample);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileBaseName + "_cut.wav";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setStatus(t().statDone, "ok");
+  }, 30);
+});
+
+/* ---------- i18n ---------- */
+function applyLang(lang) {
+  if (!I18N[lang]) lang = "ko";
+  currentLang = lang;
+  const dict = I18N[lang];
+  document.documentElement.lang = lang;
+  document.title = dict.docTitle;
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const v = dict[el.dataset.i18n];
+    if (v != null) el.textContent = v;
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const v = dict[el.dataset.i18nTitle];
+    if (v != null) el.title = v;
+  });
+  [...langToggle.children].forEach((b) => b.classList.toggle("active", b.dataset.lang === lang));
+  // keep play button label in sync with state
+  playBtn.querySelector("span").textContent = player.paused ? dict.btnPlay : dict.btnPause;
+  if (audioBuffer) infoCh.textContent = channelLabel(audioBuffer.numberOfChannels);
+  try { localStorage.setItem("tool_lang", lang); } catch (e) {}
+}
+langToggle.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-lang]");
+  if (b) applyLang(b.dataset.lang);
+});
+
+/* ---------- init ---------- */
+$("donate").href = DONATE_URL;
+(function init() {
+  let saved = "ko";
+  try { saved = localStorage.getItem("tool_lang") || "ko"; } catch (e) {}
+  applyLang(saved);
+})();
+window.addEventListener("resize", () => { if (audioBuffer) { resizeCanvas(); draw(); } });
+</script>
+</body>
+</html>
