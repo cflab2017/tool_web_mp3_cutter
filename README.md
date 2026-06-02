@@ -3,6 +3,8 @@
 
 # 오디오 자르기 (Audio Cutter)
 
+> 🌐 **Live (English): [www.coding-now.com/en/audio-cutter](https://www.coding-now.com/en/audio-cutter)**
+
 원하는 구간만 잘라 무손실 **WAV**로 저장하는 단일 HTML 도구입니다.
 **파일은 서버로 전송되지 않고, 모든 처리는 브라우저 안에서** 이루어집니다. 외부 라이브러리도 사용하지 않습니다.
 
